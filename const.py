@@ -1,4 +1,4 @@
-WINDOW_DIMS = (1920, 1080)      # Dimensions of the window
+WINDOW_DIMS = (800, 800)      # Dimensions of the window
 MENU_WIDTH = 200                # Width of the menu
 CELL_DIMS = (20, 20)            # Dimensions of cells
 CELL_COUNT = ((WINDOW_DIMS[0] - MENU_WIDTH) // CELL_DIMS[0],    # Calculating the number of cells that
