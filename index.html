@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Игра «Жизнь» Конвея — Доказательство Универсальности</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=JetBrains+Mono:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a28;
+    --accent: #00ff9d;
+    --accent2: #7c3aed;
+    --accent3: #f59e0b;
+    --text: #e8e8f0;
+    --text-dim: #8888aa;
+    --cell-live: #00ff9d;
+    --cell-dead: #0d0d14;
+    --border: rgba(0,255,157,0.15);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    line-height: 1.75;
+    overflow-x: hidden;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #hero-canvas {
+    position: absolute;
+    inset: 0;
+    opacity: 0.18;
+    z-index: 0;
+  }
+
+  .hero-content { position: relative; z-index: 1; max-width: 860px; }
+
+  .hero-eyebrow {
+    font-size: 0.75rem;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1.5rem;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.2s forwards;
+  }
+
+  .hero-title {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2.8rem, 7vw, 6rem);
+    font-weight: 900;
+    line-height: 1.05;
+    margin-bottom: 1.5rem;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.4s forwards;
+  }
+
+  .hero-title em {
+    font-style: italic;
+    color: var(--accent);
+  }
+
+  .hero-subtitle {
+    font-size: 1rem;
+    color: var(--text-dim);
+    max-width: 560px;
+    margin: 0 auto 3rem;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.6s forwards;
+  }
+
+  .hero-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+    opacity: 0;
+    animation: fadeUp 0.8s 0.8s forwards;
+  }
+
+  .nav-pill {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 0.5rem 1.25rem;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.25s;
+    letter-spacing: 0.05em;
+  }
+
+  .nav-pill:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 18px rgba(0,255,157,0.2);
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── SECTIONS ── */
+  section {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 5rem 2rem;
+  }
+
+  .section-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+  }
+
+  h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(1.8rem, 4vw, 3rem);
+    font-weight: 700;
+    margin-bottom: 2rem;
+    line-height: 1.2;
+  }
+
+  h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: var(--accent3);
+  }
+
+  p { margin-bottom: 1.25rem; color: var(--text-dim); }
+  p strong { color: var(--text); }
+
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 0 2rem;
+  }
+
+  /* ── RULES GRID ── */
+  .rules-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin: 2.5rem 0;
+  }
+
+  .rule-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .rule-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .rule-card:hover { transform: translateY(-3px); box-shadow: 0 8px 32px rgba(0,255,157,0.08); }
+  .rule-card:hover::before { opacity: 1; }
+
+  .rule-icon {
+    font-size: 1.8rem;
+    margin-bottom: 0.75rem;
+    display: block;
+  }
+
+  .rule-card h4 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: var(--text);
+  }
+
+  .rule-card p { font-size: 0.85rem; margin: 0; }
+
+  /* ── SIMULATOR ── */
+  .sim-wrapper {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    margin: 2rem 0;
+  }
+
+  .sim-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .sim-title {
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+  }
+
+  .sim-title span {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .sim-controls {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 0.4rem 0.9rem;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.03em;
+  }
+
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn.active {
+    background: var(--accent);
+    color: var(--bg);
+    border-color: var(--accent);
+    font-weight: 700;
+  }
+
+  .btn.danger { border-color: rgba(239,68,68,0.4); }
+  .btn.danger:hover { border-color: #ef4444; color: #ef4444; }
+
+  .sim-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem;
+    gap: 1rem;
+  }
+
+  #life-canvas {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: crosshair;
+    display: block;
+    max-width: 100%;
+  }
+
+  .sim-patterns {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .pattern-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 0.35rem 0.8rem;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .pattern-btn:hover { border-color: var(--accent3); color: var(--accent3); }
+  .pattern-btn.active { border-color: var(--accent3); color: var(--accent3); background: rgba(245,158,11,0.1); }
+
+  .sim-stats {
+    display: flex;
+    gap: 2rem;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+
+  .sim-stats span { color: var(--accent); font-weight: 700; }
+
+  /* ── PROOF STEPS ── */
+  .proof-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 2.5rem 0;
+    position: relative;
+  }
+
+  .proof-steps::before {
+    content: '';
+    position: absolute;
+    left: 22px;
+    top: 0; bottom: 0;
+    width: 1px;
+    background: linear-gradient(180deg, var(--accent), var(--accent2), var(--accent3));
+  }
+
+  .proof-step {
+    display: flex;
+    gap: 1.5rem;
+    padding: 1.5rem 0;
+    position: relative;
+  }
+
+  .step-number {
+    width: 45px;
+    height: 45px;
+    min-width: 45px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 2px solid var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--accent);
+    z-index: 1;
+  }
+
+  .step-content h4 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.15rem;
+    margin-bottom: 0.5rem;
+    color: var(--text);
+  }
+
+  .step-content p { font-size: 0.88rem; margin: 0; }
+
+  /* ── TRUTH TABLE ── */
+  .truth-table {
+    margin: 1.5rem 0;
+    overflow-x: auto;
+  }
+
+  table {
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    width: 100%;
+  }
+
+  th {
+    background: var(--surface2);
+    color: var(--accent);
+    padding: 0.6rem 1.2rem;
+    text-align: center;
+    border: 1px solid var(--border);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  td {
+    padding: 0.5rem 1.2rem;
+    text-align: center;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+
+  tr:hover td { background: rgba(0,255,157,0.03); }
+
+  td.one { color: var(--accent); font-weight: 700; }
+  td.zero { color: var(--text-dim); }
+
+  /* ── GATE DEMO ── */
+  .gates-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+  }
+
+  .gate-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+
+  .gate-card h4 {
+    font-family: 'Playfair Display', serif;
+    color: var(--accent2);
+    font-size: 1.2rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .gate-demo {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin: 0.75rem 0;
+  }
+
+  .gate-input {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .toggle-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: 2px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .toggle-btn.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+    box-shadow: 0 0 12px rgba(0,255,157,0.4);
+  }
+
+  .gate-arrow {
+    font-size: 1.5rem;
+    color: var(--text-dim);
+  }
+
+  .gate-output {
+    width: 50px;
+    height: 50px;
+    border-radius: 10px;
+    border: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 1.2rem;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.2s;
+    color: var(--text-dim);
+  }
+
+  .gate-output.on {
+    background: rgba(0,255,157,0.12);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 16px rgba(0,255,157,0.3);
+  }
+
+  /* ── MINI LIFE DEMOS ── */
+  .patterns-showcase {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin: 2rem 0;
+  }
+
+  .pattern-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    text-align: center;
+    transition: transform 0.2s;
+  }
+
+  .pattern-card:hover { transform: translateY(-3px); }
+
+  .pattern-card h4 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+    color: var(--text);
+  }
+
+  .pattern-card .pattern-type {
+    font-size: 0.7rem;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+  }
+
+  .mini-canvas-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0.75rem;
+  }
+
+  .mini-canvas {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .pattern-card p { font-size: 0.78rem; margin: 0; }
+
+  /* ── QUOTE ── */
+  .blockquote {
+    border-left: 3px solid var(--accent);
+    padding: 1rem 1.5rem;
+    margin: 2rem 0;
+    background: var(--surface);
+    border-radius: 0 8px 8px 0;
+  }
+
+  .blockquote p {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 1.05rem;
+    color: var(--text);
+    margin: 0;
+  }
+
+  .blockquote cite {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    display: block;
+    margin-top: 0.5rem;
+  }
+
+  /* ── THEOREM BOX ── */
+  .theorem-box {
+    background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(0,255,157,0.05));
+    border: 1px solid rgba(124,58,237,0.4);
+    border-radius: 12px;
+    padding: 2rem;
+    margin: 2rem 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .theorem-box::before {
+    content: 'ТЕОРЕМА';
+    position: absolute;
+    top: 1rem; right: 1.5rem;
+    font-size: 0.65rem;
+    letter-spacing: 0.3em;
+    color: var(--accent2);
+    opacity: 0.6;
+  }
+
+  .theorem-box p {
+    color: var(--text);
+    font-size: 1rem;
+    margin: 0;
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+  }
+
+  /* ── CODE BLOCK ── */
+  .code-block {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.25rem 0;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .code-block .kw { color: var(--accent2); }
+  .code-block .val { color: var(--accent); }
+  .code-block .cmt { color: #555577; font-style: italic; }
+
+  /* ── FOOTER ── */
+  footer {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-dim);
+    font-size: 0.78rem;
+    border-top: 1px solid var(--border);
+  }
+
+  footer a { color: var(--accent); text-decoration: none; }
+
+  /* ── SCROLL REVEAL ── */
+  .reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.7s, transform 0.7s;
+  }
+
+  .reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ── MOBILE ── */
+  @media (max-width: 640px) {
+    .sim-header { flex-direction: column; align-items: flex-start; }
+    .sim-stats { flex-wrap: wrap; gap: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ HERO ═══ -->
+<div class="hero">
+  <canvas id="hero-canvas"></canvas>
+  <div class="hero-content">
+    <p class="hero-eyebrow">Клеточные автоматы · Теория вычислений · 1970</p>
+    <h1 class="hero-title">
+      Игра<br>«<em>Жизнь</em>»<br>Конвея
+    </h1>
+    <p class="hero-subtitle">
+      Как два простых правила о рождении и смерти клеток 
+      порождают машину, способную вычислить всё что угодно
+    </p>
+    <nav class="hero-nav">
+      <a href="#rules" class="nav-pill">Правила</a>
+      <a href="#patterns" class="nav-pill">Паттерны</a>
+      <a href="#simulator" class="nav-pill">Симулятор</a>
+      <a href="#logic" class="nav-pill">Логические вентили</a>
+      <a href="#proof" class="nav-pill">Доказательство</a>
+      <a href="#rendell" class="nav-pill">Машина Тьюринга</a>
+    </nav>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ═══ SECTION 1: RULES ═══ -->
+<section id="rules">
+  <div class="reveal">
+    <p class="section-label">§ 01 — Основы</p>
+    <h2>Четыре правила, управляющие вселенной</h2>
+    <p>
+      Игра «Жизнь» — <strong>клеточный автомат</strong>, изобретённый математиком 
+      Джоном Хортоном Конвеем в 1970 году. Это двумерная сетка клеток, 
+      каждая из которых может быть <strong>живой</strong> или <strong>мёртвой</strong>. 
+      На каждом шаге все клетки обновляются <em>одновременно</em> по четырём правилам:
+    </p>
+
+    <div class="rules-grid">
+      <div class="rule-card">
+        <span class="rule-icon">💀</span>
+        <h4>Одиночество</h4>
+        <p>Живая клетка с <strong style="color:var(--text)">менее чем 2</strong> живыми соседями умирает от одиночества.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">✅</span>
+        <h4>Выживание</h4>
+        <p>Живая клетка с <strong style="color:var(--text)">2 или 3</strong> живыми соседями выживает до следующего поколения.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">🔥</span>
+        <h4>Перенаселение</h4>
+        <p>Живая клетка с <strong style="color:var(--text)">4 или более</strong> живыми соседями умирает от перенаселения.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">✨</span>
+        <h4>Рождение</h4>
+        <p>Мёртвая клетка с <strong style="color:var(--text)">ровно 3</strong> живыми соседями рождается в следующем поколении.</p>
+      </div>
+    </div>
+
+    <p>
+      Это <strong>внешний тотальный</strong> клеточный автомат — правило зависит только 
+      от количества живых соседей, а не от их расположения. Правило формально записывается 
+      как <strong style="color:var(--accent)">B3/S23</strong> (birth on 3, survive on 2 or 3).
+    </p>
+
+    <div class="blockquote">
+      <p>«Игра "Жизнь" — это не игра в обычном смысле. В ней нет игроков, нет выигрышей и проигрышей. Это бесконечный эксперимент с простыми правилами, порождающими бесконечную сложность.»</p>
+      <cite>— Мартин Гарднер, Scientific American, 1970</cite>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ SECTION 2: PATTERNS ═══ -->
+<section id="patterns">
+  <div class="reveal">
+    <p class="section-label">§ 02 — Паттерны</p>
+    <h2>Зоопарк форм жизни</h2>
+    <p>
+      Из этих четырёх правил возникают богатейшие структуры. Исследователи обнаружили 
+      сотни «организмов», каждый со своим поведением. Вот главные классы:
+    </p>
+
+    <div class="patterns-showcase" id="patterns-showcase">
+      <!-- cards filled by JS -->
+    </div>
+
+    <p>
+      Ключевое открытие: <strong>глайдер-пушка</strong> (Gosper Glider Gun), найденная в 1970 году 
+      Биллом Госпером. Она порождает бесконечный поток глайдеров — по одному каждые <strong>30 поколений</strong>. 
+      Это был первый известный бесконечно растущий паттерн и критически важный строительный блок 
+      для реализации вычислений.
+    </p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ SECTION 3: SIMULATOR ═══ -->
+<section id="simulator" style="max-width:1100px">
+  <div class="reveal">
+    <p class="section-label">§ 03 — Симулятор</p>
+    <h2>Интерактивная демонстрация</h2>
+    <p>
+      Запустите готовые паттерны или нарисуйте свои клетки кликом/перетаскиванием. 
+      Наблюдайте, как простые правила порождают сложное поведение.
+    </p>
+  </div>
+
+  <div class="sim-wrapper reveal">
+    <div class="sim-header">
+      <div class="sim-title">GAME OF LIFE · Поколение: <span id="gen-count">0</span></div>
+      <div class="sim-controls">
+        <button class="btn active" id="btn-play">▶ Пуск</button>
+        <button class="btn" id="btn-step">⏭ Шаг</button>
+        <button class="btn danger" id="btn-clear">✕ Очистить</button>
+        <select id="speed-select" class="btn" style="appearance:none; padding-right:1rem;">
+          <option value="50">Быстро</option>
+          <option value="150" selected>Нормально</option>
+          <option value="400">Медленно</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sim-body">
+      <canvas id="life-canvas" width="700" height="450"></canvas>
+
+      <div class="sim-patterns">
+        <span style="font-size:0.7rem;color:var(--text-dim);align-self:center;">Загрузить:</span>
+        <button class="pattern-btn active" data-pattern="glider">Глайдер</button>
+        <button class="pattern-btn" data-pattern="blinker">Мигалка</button>
+        <button class="pattern-btn" data-pattern="block">Блок</button>
+        <button class="pattern-btn" data-pattern="beehive">Улей</button>
+        <button class="pattern-btn" data-pattern="pulsar">Пульсар</button>
+        <button class="pattern-btn" data-pattern="gun">Глайдер-пушка</button>
+        <button class="pattern-btn" data-pattern="lwss">Космолёт</button>
+        <button class="pattern-btn" data-pattern="eater">Поглотитель</button>
+        <button class="pattern-btn" data-pattern="random">Случайно</button>
+      </div>
+
+      <div class="sim-stats">
+        <div>Живые клетки: <span id="live-count">0</span></div>
+        <div>Поколение: <span id="gen-count2">0</span></div>
+        <div>Статус: <span id="status-text">Остановлен</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ SECTION 4: BOOLEAN ═══ -->
+<section id="logic">
+  <div class="reveal">
+    <p class="section-label">§ 04 — Булева логика</p>
+    <h2>Строительные блоки вычислений</h2>
+
+    <p>
+      Чтобы доказать, что Игра «Жизнь» является <strong>универсальным вычислителем</strong>, 
+      нужно показать, что в ней можно реализовать произвольную <strong>булеву функцию</strong> — 
+      функцию от бинарных строк к бинарным строкам. 
+    </p>
+
+    <div class="theorem-box">
+      <p>
+        Теорема: Вентили AND, OR и NOT достаточны для вычисления 
+        любой возможной булевой функции (через дизъюнктивную нормальную форму).
+      </p>
+    </div>
+
+    <p>
+      Более того, одного вентиля <strong style="color:var(--accent)">NAND</strong> достаточно для построения 
+      всех остальных:
+    </p>
+
+    <div class="code-block">
+      <span class="cmt">// NAND — универсальный вентиль</span><br>
+      NOT x &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span class="val">x NAND x</span><br>
+      x AND y &nbsp;&nbsp;&nbsp;&nbsp;= <span class="val">(x NAND y) NAND (x NAND y)</span><br>
+      x OR y &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= <span class="val">(x NAND x) NAND (y NAND y)</span>
+    </div>
+
+    <h3>Интерактивные логические вентили</h3>
+    <p>Нажимайте кнопки 0/1, чтобы увидеть работу вентилей:</p>
+
+    <div class="gates-grid" id="gates-grid">
+      <!-- filled by JS -->
+    </div>
+
+    <h3 style="margin-top:2rem">Таблицы истинности</h3>
+    <div class="truth-table">
+      <table>
+        <thead>
+          <tr><th>X</th><th>Y</th><th>AND</th><th>OR</th><th>NAND</th><th>NOR</th><th>XOR</th></tr>
+        </thead>
+        <tbody id="truth-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ SECTION 5: LIFE GATES ═══ -->
+<section id="life-gates">
+  <div class="reveal">
+    <p class="section-label">§ 05 — Вентили в Игре «Жизнь»</p>
+    <h2>Как глайдеры реализуют логику</h2>
+
+    <p>
+      В Игре «Жизнь» бинарные сигналы передаются потоками <strong>глайдеров</strong>: 
+      присутствие глайдера в нужной позиции означает <strong style="color:var(--accent)">1</strong>, 
+      отсутствие — <strong style="color:var(--text-dim)">0</strong>.
+    </p>
+
+    <div class="rules-grid">
+      <div class="rule-card">
+        <span class="rule-icon">🔫</span>
+        <h4>Источник сигнала</h4>
+        <p><strong style="color:var(--text)">Глайдер-пушка</strong> генерирует периодический поток глайдеров — тактовый сигнал и источник единиц.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">💥</span>
+        <h4>Аннигиляция = NOT</h4>
+        <p>Два глайдера, столкнувшихся под прямым углом, <strong style="color:var(--text)">уничтожают друг друга</strong>. Если входной глайдер есть → выход гашения пропадает (инверсия).</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">😋</span>
+        <h4>Поглотитель</h4>
+        <p><strong style="color:var(--text)">Стабильная структура</strong>, которая поглощает входящий глайдер и восстанавливает свою форму. Убирает лишние сигналы.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">🔗</span>
+        <h4>AND из NOT</h4>
+        <p>Комбинация потоков: первое столкновение даёт NOT(x), второе — пропускает y только если x=1. Итого: <strong style="color:var(--text)">x AND y</strong>.</p>
+      </div>
+    </div>
+
+    <div class="blockquote">
+      <p>«Поток глайдеров — это провод. Столкновение — это вентиль. Глайдер-пушка — это тактовый генератор. Из этих трёх компонентов можно собрать любой компьютер.»</p>
+      <cite>— Принцип построения вычислений в Игре «Жизнь»</cite>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ SECTION 6: PROOF ═══ -->
+<section id="proof">
+  <div class="reveal">
+    <p class="section-label">§ 06 — Доказательство</p>
+    <h2>Почему Игра «Жизнь» универсальна</h2>
+
+    <p>
+      Вычислительная универсальность означает: <strong>любой алгоритм, исполнимый на 
+      компьютере, может быть выполнен и в Игре «Жизнь»</strong> — при достаточно 
+      большой начальной конфигурации.
+    </p>
+
+    <div class="proof-steps">
+      <div class="proof-step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+          <h4>Память — стабильные паттерны</h4>
+          <p>Ряды блоков 2×2 (или других устойчивых структур) кодируют бинарные данные: 
+          блок есть = 1, блок отсутствует = 0. Это аналог ленты машины Тьюринга.</p>
+        </div>
+      </div>
+      <div class="proof-step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+          <h4>Тактовый генератор — глайдер-пушка</h4>
+          <p>Глайдер-пушка Госпера порождает глайдер каждые 30 поколений. 
+          Это обеспечивает синхронизацию всех вычислительных операций — 
+          аналог тактового сигнала процессора.</p>
+        </div>
+      </div>
+      <div class="proof-step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+          <h4>NOT вентиль</h4>
+          <p>Глайдерная пушка генерирует поток единиц. Входной сигнал ориентирован 
+          перпендикулярно. Входящий глайдер (1) аннигилирует пушечный глайдер → 0. 
+          Отсутствие входного глайдера (0) позволяет пушечному пройти → 1. Это NOT.</p>
+        </div>
+      </div>
+      <div class="proof-step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+          <h4>AND вентиль из NOT</h4>
+          <p>Первое столкновение вычисляет NOT(x). Поток y сталкивается с результатом: 
+          если x=1 → там ноль → y проходит. Если x=0 → там единица → y гасится. 
+          Результат: y проходит тогда и только тогда, когда x=1 И y=1. Это AND.</p>
+        </div>
+      </div>
+      <div class="proof-step">
+        <div class="step-number">5</div>
+        <div class="step-content">
+          <h4>NAND = AND + NOT</h4>
+          <p>NOT(x AND y). Из NAND строятся все остальные вентили (AND, OR, NOT, XOR и т.д.), 
+          а из произвольных вентилей — любая булева функция 
+          через дизъюнктивную нормальную форму.</p>
+        </div>
+      </div>
+      <div class="proof-step">
+        <div class="step-number">6</div>
+        <div class="step-content">
+          <h4>Конечный управляющий автомат машины Тьюринга</h4>
+          <p>Конечный автомат (КА) универсальной машины Тьюринга — это булева функция: 
+          {0,1}ⁿ → {0,1}ᵐ. Раз мы можем реализовать любую булеву функцию, 
+          мы можем реализовать КА любой машины Тьюринга.</p>
+        </div>
+      </div>
+      <div class="proof-step">
+        <div class="step-number" style="border-color:var(--accent3);color:var(--accent3)">∎</div>
+        <div class="step-content">
+          <h4>Игра «Жизнь» — универсальный вычислитель</h4>
+          <p>Имея память, тактовый генератор и NAND-вентиль, мы можем эмулировать 
+          любую универсальную машину Тьюринга, которая вычисляет любой алгоритм. 
+          Следовательно, Игра «Жизнь» является <strong style="color:var(--accent)">вычислительно универсальной</strong>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="theorem-box">
+      <p>
+        Теорема (Берлекамп, Конвей, Гай, 1982): 
+        Игра «Жизнь» является вычислительно универсальной — 
+        она способна имитировать любую машину Тьюринга.
+      </p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ SECTION 7: RENDELL ═══ -->
+<section id="rendell">
+  <div class="reveal">
+    <p class="section-label">§ 07 — Реализация</p>
+    <h2>Настоящая машина Тьюринга в Игре «Жизнь»</h2>
+
+    <p>
+      Доказательство универсальности было абстрактным десятилетиями. В 2001 году 
+      <strong>Пол Рендел</strong> завершил первую полную реализацию машины Тьюринга 
+      непосредственно в клетках Игры «Жизнь».
+    </p>
+
+    <div class="rules-grid">
+      <div class="rule-card">
+        <span class="rule-icon">📼</span>
+        <h4>Лента — два стека</h4>
+        <p>Лента машины Тьюринга реализована как два <strong style="color:var(--text)">стека</strong>: 
+        перемещение головки = pop из одного стека и push в другой. 
+        Символы кодируются группами глайдеров.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">🧮</span>
+        <h4>Конечный автомат</h4>
+        <p>Использует два <strong style="color:var(--text)">MWSS-пушки</strong> (период 30): 
+        одна модулируется текущим состоянием, другая — прочитанным символом. 
+        Пересечение — адрес ячейки памяти.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">⏱️</span>
+        <h4>Цикл — 11 040 поколений</h4>
+        <p>Один шаг вычисления занимает <strong style="color:var(--text)">11 040 поколений</strong>: 
+        ~6 300 в стеках, ~4 740 в конечном автомате. 
+        Программа удвоения числа единиц с 2 единицами работает &gt;1 часа.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">📐</span>
+        <h4>Масштаб конструкции</h4>
+        <p>Машина Чэпмена (2002) для <strong style="color:var(--text)">универсальной МТ</strong> 
+        требует 268 096 живых клеток на сетке ~2 600 × 21 500. 
+        Абсолютный предел инженерии в мире клеточных автоматов.</p>
+      </div>
+    </div>
+
+    <h3>Программа для машины Тьюринга Рендела</h3>
+    <p>
+      Рендел запрограммировал машину на <strong>удвоение числа единиц</strong>: 
+      входная лента «11» → выходная лента «1111». 
+      Конечный автомат имеет 3 состояния и 3 символа:
+    </p>
+
+    <div class="code-block">
+      <span class="cmt">// Таблица переходов машины Тьюринга (состояние, символ → состояние', символ', направление)</span><br>
+      <span class="kw">Состояние 0</span>, читаем <span class="val">0</span>: → Стоп (Halt)<br>
+      <span class="kw">Состояние 0</span>, читаем <span class="val">1</span>: → Состояние 1, пишем 2, вправо (Right)<br>
+      <span class="kw">Состояние 0</span>, читаем <span class="val">2</span>: → Состояние 0, пишем 2, влево (Left)<br>
+      <span class="kw">Состояние 1</span>, читаем <span class="val">0</span>: → Состояние 2, пишем 1, влево (Left)<br>
+      <span class="kw">Состояние 1</span>, читаем <span class="val">2</span>: → Состояние 1, пишем 2, вправо (Right)<br>
+      <span class="kw">Состояние 2</span>, читаем <span class="val">0</span>: → Состояние 0, пишем 0, вправо (Right)<br>
+      <span class="kw">Состояние 2</span>, читаем <span class="val">1</span>: → Состояние 2, пишем 1, влево (Left)<br>
+      <span class="kw">Состояние 2</span>, читаем <span class="val">2</span>: → Состояние 2, пишем 2, влево (Left)
+    </div>
+
+    <p>
+      Каждая ячейка памяти содержит <strong>8 глайдеров</strong>: 4 для следующего состояния, 
+      3 для символа для записи, 1 для направления. Отсутствие всех 8 глайдеров означает Halt.
+    </p>
+
+    <div class="blockquote">
+      <p>«Идея стала тем более захватывающей, чем больше я осознавал, насколько простой она может быть. Ей не нужны регистры или сложные коды операций — только лента.»</p>
+      <cite>— Пол Рендел, «A Turing Machine in Conway's Game Life», 2001</cite>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ═══ SECTION 8: GITHUB ═══ -->
+<section id="github">
+  <div class="reveal">
+    <p class="section-label">§ 08 — Ресурсы</p>
+    <h2>Где запустить и исследовать</h2>
+
+    <div class="rules-grid">
+      <div class="rule-card">
+        <span class="rule-icon">🦩</span>
+        <h4>Golly</h4>
+        <p>Лучшая программа для Игры «Жизнь». Поддерживает все известные паттерны, 
+        включая машину Тьюринга Рендела. <strong style="color:var(--text)">golly.sourceforge.net</strong></p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">📚</span>
+        <h4>LifeWiki</h4>
+        <p>Энциклопедия паттернов Игры «Жизнь»: 
+        более 700 именованных структур с описаниями и RLE-файлами для загрузки в Golly.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">🖥️</span>
+        <h4>Rendell TM</h4>
+        <p>Оригинальная статья и паттерны машины Тьюринга: 
+        <strong style="color:var(--text)">rendell-attic.org/gol/tm.htm</strong>. 
+        Файл .rle для Golly доступен там же.</p>
+      </div>
+      <div class="rule-card">
+        <span class="rule-icon">🐙</span>
+        <h4>GitHub Pages</h4>
+        <p>Чтобы хостить эту страницу: создайте репозиторий, 
+        добавьте index.html, включите GitHub Pages в Settings → Pages → main branch.</p>
+      </div>
+    </div>
+
+    <h3>Как запустить машину Тьюринга в Golly</h3>
+    <div class="code-block">
+      <span class="cmt"># 1. Установите Golly (Windows/Mac/Linux)</span><br>
+      <span class="cmt"># 2. Скачайте tm.rle с rendell-attic.org/gol/tm.htm</span><br>
+      <span class="cmt"># 3. File → Open → выберите tm.rle</span><br>
+      <span class="cmt"># 4. Control → Start (пробел) — запустите симуляцию</span><br>
+      <span class="cmt"># 5. Увеличьте скорость: Control → Faster (] несколько раз)</span><br>
+      <span class="cmt"># 6. Наблюдайте за работой машины — 11 040 поколений = 1 шаг МТ</span><br><br>
+      <span class="cmt"># Для машины Чэпмена (Universal TM):</span><br>
+      <span class="cmt"># igblan.free-online.co.uk/igblan/ca/ — файл utm.rle</span><br>
+      <span class="cmt"># Сетка ~2600 × 21500 клеток, рекомендуется алгоритм HashLife в Golly</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Игра «Жизнь» · Джон Хортон Конвей, 1970 · Доказательство универсальности: Берлекамп, Конвей, Гай, 1982</p>
+  <p style="margin-top:0.5rem">Машина Тьюринга в Игре «Жизнь»: <a href="http://rendell-attic.org/gol/tm.htm" target="_blank">Пол Рендел, 2001</a> · Универсальная МТ: <a href="http://www.igblan.free-online.co.uk/igblan/ca/" target="_blank">Чэпмен, 2002</a></p>
+  <p style="margin-top:0.5rem;color:#444466">Создано для GitHub Pages · Все симуляции работают в браузере без внешних зависимостей</p>
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  GAME OF LIFE ENGINE
+// ═══════════════════════════════════════════════════════════
+
+const CELL = 10;
+let canvas, ctx, W, H, cols, rows;
+let grid, nextGrid;
+let running = false;
+let generation = 0;
+let animId = null;
+let interval = 150;
+let isDrawing = false;
+let drawValue = 1;
+
+function initCanvas() {
+  canvas = document.getElementById('life-canvas');
+  ctx = canvas.getContext('2d');
+  const wrap = canvas.parentElement;
+  const maxW = Math.min(700, wrap.clientWidth - 32);
+  canvas.width = maxW;
+  canvas.height = Math.min(450, Math.floor(maxW * 0.64));
+  cols = Math.floor(canvas.width / CELL);
+  rows = Math.floor(canvas.height / CELL);
+  grid = new Uint8Array(cols * rows);
+  nextGrid = new Uint8Array(cols * rows);
+}
+
+function idx(x, y) { return y * cols + x; }
+function get(g, x, y) {
+  if (x < 0) x += cols;
+  if (x >= cols) x -= cols;
+  if (y < 0) y += rows;
+  if (y >= rows) y -= rows;
+  return g[idx(x, y)];
+}
+
+function step() {
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let n = 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++)
+          if (dx !== 0 || dy !== 0) n += get(grid, x+dx, y+dy);
+      const alive = grid[idx(x,y)];
+      nextGrid[idx(x,y)] = alive ? (n===2||n===3?1:0) : (n===3?1:0);
+    }
+  }
+  [grid, nextGrid] = [nextGrid, grid];
+  generation++;
+  document.getElementById('gen-count').textContent = generation;
+  document.getElementById('gen-count2').textContent = generation;
+}
+
+function draw() {
+  ctx.fillStyle = '#0d0d14';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  let live = 0;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      if (grid[idx(x,y)]) {
+        live++;
+        const brightness = Math.random() * 0.15 + 0.85;
+        ctx.fillStyle = `rgba(0,255,157,${brightness})`;
+        ctx.fillRect(x*CELL+1, y*CELL+1, CELL-1, CELL-1);
+      }
+    }
+  }
+  document.getElementById('live-count').textContent = live;
+}
+
+function loop() {
+  if (!running) return;
+  step();
+  draw();
+  animId = setTimeout(loop, interval);
+}
+
+function toggleRun() {
+  running = !running;
+  const btn = document.getElementById('btn-play');
+  const status = document.getElementById('status-text');
+  if (running) {
+    btn.textContent = '⏸ Пауза';
+    btn.classList.add('active');
+    status.textContent = 'Работает';
+    loop();
+  } else {
+    btn.textContent = '▶ Пуск';
+    btn.classList.remove('active');
+    status.textContent = 'Остановлен';
+    clearTimeout(animId);
+  }
+}
+
+// ── PATTERNS ──
+const patterns = {
+  glider: { cells: [[1,0],[2,1],[0,2],[1,2],[2,2]], ox:5, oy:5 },
+  blinker: { cells: [[0,0],[1,0],[2,0]], ox:15, oy:10 },
+  block: { cells: [[0,0],[1,0],[0,1],[1,1]], ox:15, oy:10 },
+  beehive: { cells: [[1,0],[2,0],[0,1],[3,1],[1,2],[2,2]], ox:15, oy:10 },
+  pulsar: {
+    cells: (function(){
+      const c=[];
+      const arm=[[2,0],[3,0],[4,0],[0,2],[0,3],[0,4],[2,5],[3,5],[4,5],[5,2],[5,3],[5,4]];
+      function quad(cells,sx,sy){cells.forEach(([x,y])=>{c.push([x*sx,y*sy]);})}
+      arm.forEach(([x,y])=>{c.push([x+2,y+2],[-(x+2)+14,y+2],[x+2,-(y+2)+14],[-(x+2)+14,-(y+2)+14])});
+      return c;
+    })(),
+    ox:5, oy:3
+  },
+  gun: {
+    cells: [
+      [0,4],[0,5],[1,4],[1,5],
+      [10,4],[10,5],[10,6],[11,3],[11,7],[12,2],[12,8],[13,2],[13,8],
+      [14,5],[15,3],[15,7],[16,4],[16,5],[16,6],[17,5],
+      [20,2],[20,3],[20,4],[21,2],[21,3],[21,4],[22,1],[22,5],
+      [24,0],[24,1],[24,5],[24,6],
+      [34,2],[34,3],[35,2],[35,3]
+    ],
+    ox:2, oy:5
+  },
+  lwss: {
+    cells: [[1,0],[4,0],[0,1],[0,2],[4,2],[0,3],[1,3],[2,3],[3,3]],
+    ox:10, oy:10
+  },
+  eater: {
+    cells: [[0,0],[1,0],[0,1],[2,1],[2,2],[3,2],[3,3]],
+    ox:20, oy:5
+  },
+  random: null
+};
+
+function loadPattern(name) {
+  grid.fill(0);
+  generation = 0;
+  document.getElementById('gen-count').textContent = 0;
+  document.getElementById('gen-count2').textContent = 0;
+
+  if (name === 'random') {
+    for (let i = 0; i < grid.length; i++) grid[i] = Math.random() < 0.3 ? 1 : 0;
+  } else {
+    const p = patterns[name];
+    const cx = Math.floor(cols/2) - 15;
+    const cy = Math.floor(rows/2) - 10;
+    p.cells.forEach(([x,y]) => {
+      const gx = x + cx + (p.ox||0);
+      const gy = y + cy + (p.oy||0);
+      if (gx>=0 && gx<cols && gy>=0 && gy<rows) grid[idx(gx,gy)] = 1;
+    });
+  }
+  draw();
+}
+
+// ── MOUSE/TOUCH DRAWING ──
+function canvasPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return [
+    Math.floor((clientX - r.left) / CELL),
+    Math.floor((clientY - r.top) / CELL)
+  ];
+}
+
+canvas.addEventListener('mousedown', e => {
+  const [x,y] = canvasPos(e);
+  if (x>=0&&x<cols&&y>=0&&y<rows) {
+    drawValue = grid[idx(x,y)] ? 0 : 1;
+    grid[idx(x,y)] = drawValue;
+    isDrawing = true;
+    draw();
+  }
+});
+canvas.addEventListener('mousemove', e => {
+  if (!isDrawing) return;
+  const [x,y] = canvasPos(e);
+  if (x>=0&&x<cols&&y>=0&&y<rows) { grid[idx(x,y)] = drawValue; draw(); }
+});
+canvas.addEventListener('mouseup', () => isDrawing = false);
+canvas.addEventListener('mouseleave', () => isDrawing = false);
+
+// ── CONTROLS ──
+document.getElementById('btn-play').addEventListener('click', toggleRun);
+document.getElementById('btn-step').addEventListener('click', () => { if(!running){step();draw();} });
+document.getElementById('btn-clear').addEventListener('click', () => {
+  grid.fill(0); generation=0;
+  document.getElementById('gen-count').textContent=0;
+  document.getElementById('gen-count2').textContent=0;
+  draw();
+});
+document.getElementById('speed-select').addEventListener('change', e => {
+  interval = +e.target.value;
+});
+
+document.querySelectorAll('.pattern-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.pattern-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    loadPattern(btn.dataset.pattern);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  HERO BACKGROUND
+// ═══════════════════════════════════════════════════════════
+function initHero() {
+  const hc = document.getElementById('hero-canvas');
+  const hctx = hc.getContext('2d');
+  hc.width = window.innerWidth;
+  hc.height = window.innerHeight;
+  const hcols = Math.floor(hc.width/14);
+  const hrows = Math.floor(hc.height/14);
+  let hgrid = new Uint8Array(hcols*hrows);
+  let hnext = new Uint8Array(hcols*hrows);
+  for (let i=0;i<hgrid.length;i++) hgrid[i]=Math.random()<0.3?1:0;
+
+  function hstep(){
+    for(let y=0;y<hrows;y++){
+      for(let x=0;x<hcols;x++){
+        let n=0;
+        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+          if(dx||dy){
+            const nx=(x+dx+hcols)%hcols, ny=(y+dy+hrows)%hrows;
+            n+=hgrid[ny*hcols+nx];
+          }
+        }
+        const a=hgrid[y*hcols+x];
+        hnext[y*hcols+x]=a?(n===2||n===3?1:0):(n===3?1:0);
+      }
+    }
+    [hgrid,hnext]=[hnext,hgrid];
+  }
+
+  function hdraw(){
+    hctx.fillStyle='#0a0a0f';
+    hctx.fillRect(0,0,hc.width,hc.height);
+    hctx.fillStyle='#00ff9d';
+    for(let y=0;y<hrows;y++) for(let x=0;x<hcols;x++)
+      if(hgrid[y*hcols+x]) hctx.fillRect(x*14+1,y*14+1,12,12);
+  }
+
+  function hloop(){hstep();hdraw();requestAnimationFrame(hloop);}
+  hloop();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MINI PATTERN CANVASES
+// ═══════════════════════════════════════════════════════════
+const showcaseData = [
+  { name:'Блок', type:'Стабильная', desc:'Цикл длиной 1. Простейшая устойчивая структура.',
+    cells:[[0,0],[1,0],[0,1],[1,1]], size:6, w:4, h:4 },
+  { name:'Мигалка', type:'Периодическая (T=2)', desc:'Осциллирует между горизонтальной и вертикальной ориентацией.',
+    cells:[[1,0],[1,1],[1,2]], size:10, w:3, h:3 },
+  { name:'Глайдер', type:'Космолёт', desc:'Перемещается по диагонали на 1 клетку каждые 4 поколения.',
+    cells:[[1,0],[2,1],[0,2],[1,2],[2,2]], size:10, w:3, h:3 },
+  { name:'Улей', type:'Стабильная', desc:'Устойчивая структура из 6 клеток.',
+    cells:[[1,0],[2,0],[0,1],[3,1],[1,2],[2,2]], size:10, w:4, h:3 },
+  { name:'Пульсар', type:'Периодическая (T=3)', desc:'Один из самых распространённых осцилляторов.',
+    cells:[[2,0],[3,0],[4,0],[8,0],[9,0],[10,0],[0,2],[5,2],[7,2],[12,2],[0,3],[5,3],[7,3],[12,3],[0,4],[5,4],[7,4],[12,4],[2,5],[3,5],[4,5],[8,5],[9,5],[10,5],[2,7],[3,7],[4,7],[8,7],[9,7],[10,7],[0,8],[5,8],[7,8],[12,8],[0,9],[5,9],[7,9],[12,9],[0,10],[5,10],[7,10],[12,10],[2,12],[3,12],[4,12],[8,12],[9,12],[10,12]],
+    size:5, w:13, h:13 },
+  { name:'Глайдер-пушка', type:'Пушка', desc:'Генерирует поток глайдеров. 1 глайдер каждые 30 поколений.',
+    cells:[[0,4],[0,5],[1,4],[1,5],[10,4],[10,5],[10,6],[11,3],[11,7],[12,2],[12,8],[13,2],[13,8],[14,5],[15,3],[15,7],[16,4],[16,5],[16,6],[17,5],[20,2],[20,3],[20,4],[21,2],[21,3],[21,4],[22,1],[22,5],[24,0],[24,1],[24,5],[24,6],[34,2],[34,3],[35,2],[35,3]],
+    size:4, w:36, h:11 },
+  { name:'Поглотитель', type:'Стабильная', desc:'Поглощает глайдер и возвращается в исходное состояние.',
+    cells:[[0,0],[1,0],[0,1],[2,1],[2,2],[3,2],[3,3]], size:10, w:4, h:4 },
+  { name:'LWSS', type:'Космолёт (T=4)', desc:'Лёгкий космолёт. Движется горизонтально.',
+    cells:[[1,0],[4,0],[0,1],[0,2],[4,2],[0,3],[1,3],[2,3],[3,3]], size:10, w:5, h:4 }
+];
+
+function buildShowcase() {
+  const container = document.getElementById('patterns-showcase');
+  showcaseData.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'pattern-card';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mini-canvas-wrap';
+    const mc = document.createElement('canvas');
+    mc.className = 'mini-canvas';
+    const S = p.size;
+    mc.width = (p.w+2)*S;
+    mc.height = (p.h+2)*S;
+    const mctx = mc.getContext('2d');
+
+    function drawMini(g) {
+      mctx.fillStyle = '#0d0d14';
+      mctx.fillRect(0,0,mc.width,mc.height);
+      g.forEach(([x,y]) => {
+        mctx.fillStyle = '#00ff9d';
+        mctx.fillRect((x+1)*S+1, (y+1)*S+1, S-1, S-1);
+      });
+    }
+
+    // animate gliders, guns, spaceships; static otherwise
+    const animated = ['Глайдер', 'Мигалка', 'Пульсар', 'Глайдер-пушка', 'LWSS'];
+    if (animated.includes(p.name)) {
+      const acols = p.w+2, arows = p.h+2;
+      let ag = new Uint8Array(acols*arows);
+      let ang = new Uint8Array(acols*arows);
+      p.cells.forEach(([x,y]) => { if(x<acols-2&&y<arows-2) ag[(y+1)*acols+(x+1)]=1; });
+
+      function astep() {
+        for(let y=0;y<arows;y++) for(let x=0;x<acols;x++){
+          let n=0;
+          for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+            if(dx||dy){const nx=(x+dx+acols)%acols,ny=(y+dy+arows)%arows;n+=ag[ny*acols+nx];}
+          }
+          const a=ag[y*acols+x];
+          ang[y*acols+x]=a?(n===2||n===3?1:0):(n===3?1:0);
+        }
+        [ag,ang]=[ang,ag];
+      }
+
+      function adraw() {
+        mctx.fillStyle='#0d0d14';
+        mctx.fillRect(0,0,mc.width,mc.height);
+        for(let y=0;y<arows;y++) for(let x=0;x<acols;x++)
+          if(ag[y*acols+x]){mctx.fillStyle='#00ff9d';mctx.fillRect(x*S+1,y*S+1,S-1,S-1);}
+      }
+
+      let tick=0;
+      function aloop(){
+        tick++;
+        if(tick%8===0){astep();adraw();}
+        requestAnimationFrame(aloop);
+      }
+      adraw(); aloop();
+    } else {
+      drawMini(p.cells);
+    }
+
+    wrap.appendChild(mc);
+    card.innerHTML = `<h4>${p.name}</h4><div class="pattern-type">${p.type}</div>`;
+    card.appendChild(wrap);
+    card.innerHTML += `<p>${p.desc}</p>`;
+    const h4 = card.querySelector('h4');
+    const pt = card.querySelector('.pattern-type');
+    card.insertBefore(h4, card.firstChild);
+    card.insertBefore(pt, wrap);
+    // redo properly
+    card.innerHTML = '';
+    card.innerHTML = `<h4>${p.name}</h4><div class="pattern-type">${p.type}</div>`;
+    card.appendChild(wrap);
+    const pdesc = document.createElement('p');
+    pdesc.textContent = p.desc;
+    card.appendChild(pdesc);
+
+    container.appendChild(card);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  LOGIC GATES
+// ═══════════════════════════════════════════════════════════
+function buildGates() {
+  const gates = [
+    { name:'NOT', inputs:1, fn:([a])=>a?0:1, label:'NOT X', color:'#7c3aed' },
+    { name:'AND', inputs:2, fn:([a,b])=>a&&b?1:0, label:'X AND Y', color:'#00ff9d' },
+    { name:'OR', inputs:2, fn:([a,b])=>a||b?1:0, label:'X OR Y', color:'#f59e0b' },
+    { name:'NAND', inputs:2, fn:([a,b])=>!(a&&b)?1:0, label:'X NAND Y', color:'#ef4444' },
+    { name:'NOR', inputs:2, fn:([a,b])=>!(a||b)?1:0, label:'X NOR Y', color:'#06b6d4' },
+    { name:'XOR', inputs:2, fn:([a,b])=>a!==b?1:0, label:'X XOR Y', color:'#ec4899' },
+  ];
+
+  const container = document.getElementById('gates-grid');
+  gates.forEach(gate => {
+    const card = document.createElement('div');
+    card.className = 'gate-card';
+    const vals = new Array(gate.inputs).fill(0);
+
+    function render() {
+      card.innerHTML = '';
+      const h4 = document.createElement('h4');
+      h4.innerHTML = `<span style="color:${gate.color}">${gate.name}</span> вентиль`;
+      card.appendChild(h4);
+
+      const demo = document.createElement('div');
+      demo.className = 'gate-demo';
+
+      const inp = document.createElement('div');
+      inp.className = 'gate-input';
+      const labels = ['X','Y'];
+      vals.forEach((v,i) => {
+        const row = document.createElement('div');
+        row.style.cssText='display:flex;align-items:center;gap:0.4rem;';
+        const lbl = document.createElement('span');
+        lbl.style.cssText='font-size:0.7rem;color:var(--text-dim);width:12px;';
+        lbl.textContent = labels[i];
+        const btn = document.createElement('button');
+        btn.className = 'toggle-btn' + (v?' on':'');
+        btn.textContent = v;
+        btn.addEventListener('click', () => {
+          vals[i] = vals[i]?0:1;
+          render();
+        });
+        row.appendChild(lbl);
+        row.appendChild(btn);
+        inp.appendChild(row);
+      });
+
+      const arr = document.createElement('div');
+      arr.className='gate-arrow'; arr.textContent='→';
+
+      const out = gate.fn(vals);
+      const outEl = document.createElement('div');
+      outEl.className='gate-output'+(out?' on':'');
+      outEl.textContent=out;
+
+      demo.appendChild(inp);
+      demo.appendChild(arr);
+      demo.appendChild(outEl);
+      card.appendChild(demo);
+
+      const formula = document.createElement('div');
+      formula.style.cssText='font-size:0.75rem;color:var(--text-dim);margin-top:0.5rem;';
+      const inputStr = vals.slice(0,gate.inputs).join(', ');
+      formula.innerHTML = `<span style="color:${gate.color}">${gate.name}</span>(${inputStr}) = <strong style="color:${out?'var(--accent)':'var(--text-dim)'}">${out}</strong>`;
+      card.appendChild(formula);
+    }
+
+    render();
+    container.appendChild(card);
+  });
+}
+
+// ── TRUTH TABLE ──
+function buildTruthTable() {
+  const tbody = document.getElementById('truth-tbody');
+  for (let x=0;x<=1;x++) for (let y=0;y<=1;y++) {
+    const tr = document.createElement('tr');
+    const and=x&&y?1:0, or=x||y?1:0, nand=!(x&&y)?1:0, nor=!(x||y)?1:0, xor=x!==y?1:0;
+    [x,y,and,or,nand,nor,xor].forEach(v=>{
+      const td=document.createElement('td');
+      td.textContent=v;
+      td.className=v?'one':'zero';
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+}
+
+// ── SCROLL REVEAL ──
+function initReveal() {
+  const els = document.querySelectorAll('.reveal');
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.08 });
+  els.forEach(el => obs.observe(el));
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════
+window.addEventListener('load', () => {
+  initHero();
+  initCanvas();
+  buildShowcase();
+  buildGates();
+  buildTruthTable();
+  initReveal();
+  loadPattern('glider');
+  draw();
+});
+</script>
+</body>
+</html>
