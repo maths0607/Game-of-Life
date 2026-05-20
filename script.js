@@ -1,490 +1,634 @@
 /**
- * GAME OF LIFE — Conway's Game of Life Simulator
- * Preuve d'universalité computationnelle
+ * GAME OF LIFE — Proof of Universality (A1 Russian)
+ * Engine with BOUNDARY DEATH (no wrapping) + pattern demos + logic gates
  */
 
 // ═══════════════════════════════════════════════════════════
-//  GAME OF LIFE ENGINE
+//  GAME OF LIFE ENGINE — avec mort aux bords
 // ═══════════════════════════════════════════════════════════
 
-const CELL = 10;
-let canvas, ctx, W, H, cols, rows;
-let grid, nextGrid;
-let running = false;
-let generation = 0;
-let animId = null;
-let interval = 150;
-let isDrawing = false;
-let drawValue = 1;
-
-function initCanvas() {
-  canvas = document.getElementById('life-canvas');
-  if (!canvas) return;
-  ctx = canvas.getContext('2d');
-  const wrap = canvas.parentElement;
-  const maxW = Math.min(700, (wrap && wrap.clientWidth) ? wrap.clientWidth - 32 : 600);
-  canvas.width = Math.max(100, maxW);
-  canvas.height = Math.max(100, Math.floor(canvas.width * 0.64));
-  cols = Math.floor(canvas.width / CELL);
-  rows = Math.floor(canvas.height / CELL);
-  grid = new Uint8Array(cols * rows);
-  nextGrid = new Uint8Array(cols * rows);
-}
-
-function idx(x, y) { return y * cols + x; }
-
-function get(g, x, y) {
-  if (x < 0) x += cols;
-  if (x >= cols) x -= cols;
-  if (y < 0) y += rows;
-  if (y >= rows) y -= rows;
-  return g[idx(x, y)];
-}
-
-function step() {
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      let n = 0;
-      for (let dy = -1; dy <= 1; dy++)
-        for (let dx = -1; dx <= 1; dx++)
-          if (dx !== 0 || dy !== 0) n += get(grid, x+dx, y+dy);
-      const alive = grid[idx(x,y)];
-      nextGrid[idx(x,y)] = alive ? (n===2||n===3?1:0) : (n===3?1:0);
+class GameOfLife {
+  constructor(canvas, cellSize = 10) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.cellSize = cellSize;
+    
+    // Dimensions de la grille (en cellules)
+    this.cols = Math.floor(canvas.width / cellSize);
+    this.rows = Math.floor(canvas.height / cellSize);
+    
+    // Grille 2D : grid[y][x] = 0 ou 1
+    this.grid = this.createEmptyGrid();
+    
+    // État de la simulation
+    this.running = false;
+    this.interval = 150;  // ms entre chaque génération
+    this.timer = null;
+    
+    // Zone de "mort" aux bords (optionnel : tue les cellules trop proches du bord)
+    this.boundaryMargin = 0;  // 0 = mort exacte au bord, >0 = marge de sécurité
+    
+    this.setupEvents();
+  }
+  
+  // Crée une grille vide (toutes mortes)
+  createEmptyGrid() {
+    return Array.from({ length: this.rows }, () => Array(this.cols).fill(0));
+  }
+  
+  // ✅ Compte les voisins SANS wrapping — mort aux bords
+  countNeighbors(x, y) {
+    let count = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <=  1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        
+        const nx = x + dx;  // colonne voisine
+        const ny = y + dy;  // ligne voisine
+        
+        // ✅ BORNES STRICTES : si hors grille → on ignore (pas de comptage)
+        if (nx >= 0 && nx < this.cols && ny >= 0 && ny < this.rows) {
+          count += this.grid[ny][nx];
+        }
+      }
+    }
+    return count;
+  }
+  
+  // ✅ Une génération : applique les règles de Conway AVEC mort aux bords
+  step() {
+    const newGrid = this.createEmptyGrid();
+    
+    for (let y = 0; y < this.rows; y++) {
+      for (let x = 0; x < this.cols; x++) {
+        const neighbors = this.countNeighbors(x, y);
+        const alive = this.grid[y][x];
+        
+        // Règles de Conway : B3/S23
+        if (alive) {
+          // Survie : 2 ou 3 voisins
+          newGrid[y][x] = (neighbors === 2 || neighbors === 3) ? 1 : 0;
+        } else {
+          // Naissance : exactement 3 voisins
+          newGrid[y][x] = (neighbors === 3) ? 1 : 0;
+        }
+      }
+    }
+    
+    this.grid = newGrid;
+    
+    // ✅ OPTIONNEL : tuer les cellules dans la marge de bord
+    if (this.boundaryMargin > 0) {
+      this.applyBoundaryKill();
     }
   }
-  [grid, nextGrid] = [nextGrid, grid];
-  generation++;
-  const genEl1 = document.getElementById('gen-count');
-  const genEl2 = document.getElementById('gen-count2');
-  if (genEl1) genEl1.textContent = generation;
-  if (genEl2) genEl2.textContent = generation;
-}
-
-function draw() {
-  if (!ctx || !canvas) return;
-  ctx.fillStyle = '#0d0d14';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  let live = 0;
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      if (grid[idx(x,y)]) {
-        live++;
-        const brightness = Math.random() * 0.15 + 0.85;
-        ctx.fillStyle = `rgba(0,255,157,${brightness})`;
-        ctx.fillRect(x*CELL+1, y*CELL+1, CELL-1, CELL-1);
+  
+  // ✅ Tue les cellules trop proches des bords (zone de sécurité)
+  applyBoundaryKill() {
+    for (let y = 0; y < this.rows; y++) {
+      for (let x = 0; x < this.cols; x++) {
+        if (x < this.boundaryMargin || x >= this.cols - this.boundaryMargin ||
+            y < this.boundaryMargin || y >= this.rows - this.boundaryMargin) {
+          this.grid[y][x] = 0;  // force la mort
+        }
       }
     }
   }
-  const liveEl = document.getElementById('live-count');
-  if (liveEl) liveEl.textContent = live;
-}
-
-function loop() {
-  if (!running) return;
-  step();
-  draw();
-  animId = setTimeout(loop, interval);
-}
-
-function toggleRun() {
-  running = !running;
-  const btn = document.getElementById('btn-play');
-  const status = document.getElementById('status-text');
-  if (running) {
-    if (btn) { btn.textContent = '⏸ Пауза'; btn.classList.add('active'); }
-    if (status) status.textContent = 'Работает';
-    loop();
-  } else {
-    if (btn) { btn.textContent = '▶ Пуск'; btn.classList.remove('active'); }
-    if (status) status.textContent = 'Остановлен';
-    clearTimeout(animId);
+  
+  // Dessine la grille sur le canvas
+  draw(color = '#00ff9d') {
+    if (!this.ctx) return;
+    
+    // Fond noir
+    this.ctx.fillStyle = '#0d0d14';
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // Dessine les cellules vivantes
+    for (let y = 0; y < this.rows; y++) {
+      for (let x = 0; x < this.cols; x++) {
+        if (this.grid[y][x]) {
+          this.ctx.fillStyle = color;
+          this.ctx.fillRect(
+            x * this.cellSize + 1,
+            y * this.cellSize + 1,
+            this.cellSize - 2,
+            this.cellSize - 2
+          );
+        }
+      }
+    }
+  }
+  
+  // Boucle principale de la simulation
+  loop() {
+    if (!this.running) return;
+    this.step();
+    this.draw();
+    this.timer = setTimeout(() => this.loop(), this.interval);
+  }
+  
+  // Contrôles de la simulation
+  start() { 
+    if (this.running) return; 
+    this.running = true; 
+    this.loop(); 
+  }
+  
+  stop() { 
+    this.running = false; 
+    if (this.timer) clearTimeout(this.timer); 
+  }
+  
+  toggle() { 
+    this.running ? this.stop() : this.start(); 
+  }
+  
+  clear() { 
+    this.stop(); 
+    this.grid = this.createEmptyGrid(); 
+    this.draw(); 
+  }
+  
+  // ✅ Définit une cellule — avec vérification des bornes
+  setCell(x, y, value) {
+    // Bornes strictes : si hors grille → on ignore (pas de création)
+    if (x < 0 || x >= this.cols || y < 0 || y >= this.rows) {
+      return;  // cellule hors bornes → ignorée
+    }
+    this.grid[y][x] = value ? 1 : 0;
+  }
+  
+  // Bascule l'état d'une cellule (vivante ↔ morte)
+  toggleCell(x, y) {
+    if (x < 0 || x >= this.cols || y < 0 || y >= this.rows) {
+      return;
+    }
+    this.grid[y][x] = this.grid[y][x] ? 0 : 1;
+    this.draw();
+  }
+  
+  // Gestion des clics sur le canvas
+  setupEvents() {
+    if (!this.canvas) return;
+    
+    this.canvas.addEventListener('click', (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) / this.cellSize);
+      const y = Math.floor((e.clientY - rect.top) / this.cellSize);
+      this.toggleCell(x, y);
+    });
+  }
+  
+  // Charge un pattern à une position donnée (avec centrage optionnel)
+  loadPattern(pattern, offsetX = null, offsetY = null) {
+    // Si pas de position donnée → centre le pattern
+    const cx = offsetX !== null ? offsetX : Math.floor(this.cols / 2) - Math.floor((pattern[0]?.length || 0) / 2);
+    const cy = offsetY !== null ? offsetY : Math.floor(this.rows / 2) - Math.floor(pattern.length / 2);
+    
+    for (let y = 0; y < pattern.length; y++) {
+      for (let x = 0; x < pattern[y].length; x++) {
+        if (pattern[y][x] === 'o' || pattern[y][x] === 1) {
+          this.setCell(cx + x, cy + y, 1);
+        }
+      }
+    }
+    this.draw();  // Rafraîchir après chargement
   }
 }
 
-// ── PATTERNS ──
-const patterns = {
-  glider: { cells: [[1,0],[2,1],[0,2],[1,2],[2,2]], ox:5, oy:5 },
-  blinker: { cells: [[0,0],[1,0],[2,0]], ox:15, oy:10 },
-  block: { cells: [[0,0],[1,0],[0,1],[1,1]], ox:15, oy:10 },
-  beehive: { cells: [[1,0],[2,0],[0,1],[3,1],[1,2],[2,2]], ox:15, oy:10 },
-  pulsar: {
-    cells: (function(){
-      const c=[];
-      const arm=[[2,0],[3,0],[4,0],[0,2],[0,3],[0,4],[2,5],[3,5],[4,5],[5,2],[5,3],[5,4]];
-      function quad(cells,sx,sy){cells.forEach(([x,y])=>{c.push([x*sx,y*sy]);})}
-      arm.forEach(([x,y])=>{c.push([x+2,y+2],[-(x+2)+14,y+2],[x+2,-(y+2)+14],[-(x+2)+14,-(y+2)+14])});
-      return c;
-    })(),
-    ox:5, oy:3
-  },
-  gun: {
-    cells: [
-      [0,4],[0,5],[1,4],[1,5],
-      [10,4],[10,5],[10,6],[11,3],[11,7],[12,2],[12,8],[13,2],[13,8],
-      [14,5],[15,3],[15,7],[16,4],[16,5],[16,6],[17,5],
-      [20,2],[20,3],[20,4],[21,2],[21,3],[21,4],[22,1],[22,5],
-      [24,0],[24,1],[24,5],[24,6],
-      [34,2],[34,3],[35,2],[35,3]
-    ],
-    ox:2, oy:5
-  },
-  lwss: {
-    cells: [[1,0],[4,0],[0,1],[0,2],[4,2],[0,3],[1,3],[2,3],[3,3]],
-    ox:10, oy:10
-  },
-  eater: {
-    cells: [[0,0],[1,0],[0,1],[2,1],[2,2],[3,2],[3,3]],
-    ox:20, oy:5
-  },
-  random: null
+// ═══════════════════════════════════════════════════════════
+//  PATTERNS (from PDF CA_part14)
+// ═══════════════════════════════════════════════════════════
+
+const PATTERNS = {
+  // ── Formes stables (cycle = 1) ──
+  block: ['oo', 'oo'],
+  beehive: ['.oo.', 'o..o', '.oo.'],
+  loaf: ['.oo.', 'o..o', '.o.o', '..o.'],
+  tub: ['.o.', 'o.o', '.o.'],
+  
+  // ── Oscillateurs (cycle = 2) ──
+  blinker: ['ooo'],
+  toad: ['.ooo', 'ooo.'],
+  beacon: ['oooo', 'oooo', 'oo..', 'oo..'],
+  
+  // ── Glider (se déplace ↘) ──
+  glider: ['.o.', '..o', 'ooo'],
+  
+  // ── Vaisseaux spatiaux (cycle = 4, se déplacent →) ──
+   // ── Lightweight spaceship (LWSS) ──
+  lwss: [ '.o..o', 'o....', 'o...o', 'oooo.' ],
+
+  // ── Middleweight spaceship (MWSS) ──
+  mwss: [ '...o..', '.o...o', 'o.....', 'o....o', 'ooooo.' ],
+
+  // ── Heavyweight spaceship (HWSS) ──
+  hwss: [ '...oo..','o.....o','.......o', 'o......o', '.oooooo.'],  
+  // ── Mangeur (eater) ──
+  eater: ['oo.', 'o.o', '..o', '..oo'],
+  
+  // ── Puissance : Gosper Glider Gun (simplifié pour démo) ──
+  gun: [
+    '........................o...........',
+    '......................o.o...........',
+    '............oo......oo............oo',
+    '...........o...o....oo............oo',
+    'oo........o.....o...oo..............',
+    'oo........o...o.oo....o.o...........',
+    '..........o.....o.......o...........',
+    '...........o...o....................',
+    '............oo......................'
+  ]
 };
 
-function loadPattern(name) {
-  if (!grid) return;
-  grid.fill(0);
-  generation = 0;
-  const genEl1 = document.getElementById('gen-count');
-  const genEl2 = document.getElementById('gen-count2');
-  if (genEl1) genEl1.textContent = 0;
-  if (genEl2) genEl2.textContent = 0;
+// ═══════════════════════════════════════════════════════════
+//  INITIALISATION — toutes les démos
+// ═══════════════════════════════════════════════════════════
 
-  if (name === 'random') {
-    for (let i = 0; i < grid.length; i++) grid[i] = Math.random() < 0.3 ? 1 : 0;
-  } else {
-    const p = patterns[name];
-    if (!p) return;
-    const cx = Math.floor(cols/2) - 15;
-    const cy = Math.floor(rows/2) - 10;
-    p.cells.forEach(([x,y]) => {
-      const gx = x + cx + (p.ox||0);
-      const gy = y + cy + (p.oy||0);
-      if (gx>=0 && gx<cols && gy>=0 && gy<rows) grid[idx(gx,gy)] = 1;
-    });
-  }
-  draw();
-}
-
-// ── MOUSE/TOUCH DRAWING ──
-function canvasPos(e) {
-  const r = canvas.getBoundingClientRect();
-  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-  return [
-    Math.floor((clientX - r.left) / CELL),
-    Math.floor((clientY - r.top) / CELL)
-  ];
-}
-
-if (canvas) {
-  canvas.addEventListener('mousedown', e => {
-    const [x,y] = canvasPos(e);
-    if (x>=0&&x<cols&&y>=0&&y<rows) {
-      drawValue = grid[idx(x,y)] ? 0 : 1;
-      grid[idx(x,y)] = drawValue;
-      isDrawing = true;
-      draw();
-    }
-  });
-  canvas.addEventListener('mousemove', e => {
-    if (!isDrawing) return;
-    const [x,y] = canvasPos(e);
-    if (x>=0&&x<cols&&y>=0&&y<rows) { grid[idx(x,y)] = drawValue; draw(); }
-  });
-  canvas.addEventListener('mouseup', () => isDrawing = false);
-  canvas.addEventListener('mouseleave', () => isDrawing = false);
-}
-
-// ── CONTROLS ──
 document.addEventListener('DOMContentLoaded', () => {
-  const btnPlay = document.getElementById('btn-play');
-  const btnStep = document.getElementById('btn-step');
-  const btnClear = document.getElementById('btn-clear');
-  const speedSelect = document.getElementById('speed-select');
   
-  if (btnPlay) btnPlay.addEventListener('click', toggleRun);
-  if (btnStep) btnStep.addEventListener('click', () => { if(!running){step();draw();} });
-  if (btnClear) btnClear.addEventListener('click', () => {
-    if (!grid) return;
-    grid.fill(0); generation=0;
-    const genEl1 = document.getElementById('gen-count');
-    const genEl2 = document.getElementById('gen-count2');
-    if (genEl1) genEl1.textContent=0;
-    if (genEl2) genEl2.textContent=0;
-    draw();
-  });
-  if (speedSelect) speedSelect.addEventListener('change', e => {
-    interval = +e.target.value;
-  });
-
-  document.querySelectorAll('.pattern-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.pattern-btn').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      loadPattern(btn.dataset.pattern);
+  // ── SIMULATEUR PRINCIPAL : règles de base ──
+  const rulesCanvas = document.getElementById('sim-rules');
+  if (rulesCanvas) {
+    const rulesSim = new GameOfLife(rulesCanvas, 10);
+    
+    document.getElementById('btn-rules-start')?.addEventListener('click', () => rulesSim.toggle());
+    document.getElementById('btn-rules-step')?.addEventListener('click', () => { 
+      rulesSim.step(); 
+      rulesSim.draw(); 
     });
-  });
-});
+    document.getElementById('btn-rules-clear')?.addEventListener('click', () => rulesSim.clear());
+    document.getElementById('btn-rules-example')?.addEventListener('click', () => {
+      rulesSim.loadPattern(PATTERNS.blinker,10 ,10);
+      rulesSim.loadPattern(PATTERNS.block, 20,20);
+      rulesSim.start();
+    });
+  }
+  
+  // ── FONCTION UTILITAIRE : setup d'une démo de forme ──
+  function setupFormDemo(canvasId, patternName, cellSize = 8) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !PATTERNS[patternName]) return;
+    
+    const sim = new GameOfLife(canvas, cellSize);
+    sim.loadPattern(PATTERNS[patternName]);
+    sim.interval = 200;
+    sim.start();
+  }
+  
+  // ── FORMES STABLES ──
+  setupFormDemo('form-block', 'block');
+  setupFormDemo('form-beehive', 'beehive');
+  setupFormDemo('form-loaf', 'loaf');
+  
+  // ── OSCILLATEURS ──
+  setupFormDemo('form-blinker', 'blinker');
+  setupFormDemo('form-toad', 'toad');
+  setupFormDemo('form-beacon', 'beacon');
+  setupFormDemo('form-lwss', 'lwss');
+  setupFormDemo('form-mwss', 'mwss');
+  setupFormDemo('form-hwss', 'hwss');
+  
+  // ── GLIDER (avec bouton de démarrage) ──
+  const gliderCanvas = document.getElementById('form-glider');
+  if (gliderCanvas) {
+    const gliderSim = new GameOfLife(gliderCanvas, 10);
+    gliderSim.loadPattern(PATTERNS.glider,0,0);
+    gliderSim.interval = 150;
+    
+    document.getElementById('btn-rules-start-gli')?.addEventListener('click', () => gliderSim.toggle());
+    document.getElementById('btn-rules-step-gli')?.addEventListener('click', () => { 
+      gliderSim.step(); 
+      gliderSim.draw(); 
+    });
+  }
+  
+  // ── EATER + GLIDER (collision) — CORRECTION COMPLETE ──
+  const eaterCanvas = document.getElementById('form-eater');
+  if (eaterCanvas) {
+    const eaterSim = new GameOfLife(eaterCanvas, 8);
+    
+    // Positionner l'EATER (stable) au centre-droit
+    const eaterX = 22;
+    const eaterY = 16;
+    const eaterPattern = PATTERNS.eater;
+    for (let y = 0; y < eaterPattern.length; y++) {
+      for (let x = 0; x < eaterPattern[y].length; x++) {
+        if (eaterPattern[y][x] === 'o') {
+          eaterSim.setCell(eaterX + x, eaterY + y, 1);
+        }
+      }
+    }
+    
+    // Positionner le GLIDER au nord-ouest pour qu'il approche l'eater (↘)
+    // Le glider avance de 1 cellule diagonale tous les 4 ticks
+    const gliderX = eaterX - 12;  // 12 cellules à gauche
+    const gliderY = eaterY - 12;  // 12 cellules au-dessus
+    const gliderPattern = PATTERNS.glider;
+    for (let y =  0; y < gliderPattern.length; y++) {
+      for (let x = 0; x < gliderPattern[y].length; x++) {
+        if (gliderPattern[y][x] === 'o') {
+          eaterSim.setCell(gliderX + x, gliderY + y, 1);
+        }
+      }
+    }
+    
+    eaterSim.interval = 120;  // Vitesse pour bien voir la collision
+    eaterSim.draw();          // Afficher l'état initial
+    
+    document.querySelector('[data-form="eater"]')?.addEventListener('click', () => {
+      eaterSim.start();
+    });
+  }
+  
+  // ── GLIDER GUN (simplifié) ──
+  const gunCanvas = document.getElementById('form-gun');
+  if (gunCanvas) {
+    const gunSim = new GameOfLife(gunCanvas, 4);
+    gunSim.loadPattern(PATTERNS.gun,0,0);
+    gunSim.interval = 20
+    const eaterX = 64+30;
+    const eaterY =  50+30;
+    const eaterPattern = PATTERNS.eater;
+    for (let y = 0; y < eaterPattern.length; y++) {
+      for (let x = 0; x < eaterPattern[y].length; x++) {
+        if (eaterPattern[y][x] === 'o') {
+          gunSim.setCell(eaterX + x, eaterY + y, 1);
+        }
+      }
+    }
+    
+    document.querySelector('[data-form="gun"]')?.addEventListener('click', () => {
+      gunSim.start();
+    });
+  }
+  ///collisison 
 
-// ═══════════════════════════════════════════════════════════
-//  HERO BACKGROUND
-// ═══════════════════════════════════════════════════════════
-function initHero() {
-  const hc = document.getElementById('hero-canvas');
-  if (!hc) return;
-  const hctx = hc.getContext('2d');
-  hc.width = window.innerWidth;
-  hc.height = window.innerHeight;
-  const hcols = Math.floor(hc.width/14);
-  const hrows = Math.floor(hc.height/14);
-  let hgrid = new Uint8Array(hcols*hrows);
-  let hnext = new Uint8Array(hcols*hrows);
-  for (let i=0;i<hgrid.length;i++) hgrid[i]=Math.random()<0.3?1:0;
+  const collisionCanvas = document.getElementById('form-collision');
+  if (collisionCanvas) {
+    const collisionSim = new GameOfLife(collisionCanvas, 4);
+    collisionSim.loadPattern(PATTERNS.gun,0,0);
+    collisionSim.interval = 20
+    const eaterX = 120;
+    const eaterY = 1;
+    const eaterPattern = PATTERNS.gun;
+    for (let y = 0; y < eaterPattern.length; y++) {
+      for (let x = 0; x < eaterPattern[y].length; x++) {
+        if (eaterPattern[y][x] === 'o') {
+          collisionSim.setCell(eaterX  - x, eaterY + y, 1);
+        }
+      }
+    }
+    
+    document.querySelector('[data-form="gli-collision"]')?.addEventListener('click', () => {
+      collisionSim.start();
+    });
+  }
 
-  function hstep(){
-    for(let y=0;y<hrows;y++){
-      for(let x=0;x<hcols;x++){
-        let n=0;
-        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
-          if(dx||dy){
-            const nx=(x+dx+hcols)%hcols, ny=(y+dy+hrows)%hrows;
-            n+=hgrid[ny*hcols+nx];
+
+
+
+
+  // ── BLOCS ORDINATEUR : Mémoire (blocs stables = bits) ──
+const memCanvas = document.getElementById('sim-memory');
+
+if (memCanvas) {
+  const memSim = new GameOfLife(memCanvas, 12);
+  const block = PATTERNS.block;
+
+  // Suite de bits à afficher
+  const bits = [1, 1, 0, 0, 1, 0, 1];
+
+  for (let i = 0; i < bits.length; i++) {
+
+    // Un bloc = bit 1
+    if (bits[i] === 1) {
+
+      for (let y = 0; y < block.length; y++) {
+        for (let x = 0; x < block[y].length; x++) {
+
+          if (block[y][x] === 'o') {
+            memSim.setCell(
+              i * 4 + x,
+              2 + y,
+              1
+            );
           }
         }
-        const a=hgrid[y*hcols+x];
-        hnext[y*hcols+x]=a?(n===2||n===3?1:0):(n===3?1:0);
       }
     }
-    [hgrid,hnext]=[hnext,hgrid];
   }
 
-  function hdraw(){
-    hctx.fillStyle='#0a0a0f';
-    hctx.fillRect(0,0,hc.width,hc.height);
-    hctx.fillStyle='#00ff9d';
-    for(let y=0;y<hrows;y++) for(let x=0;x<hcols;x++)
-      if(hgrid[y*hcols+x]) hctx.fillRect(x*14+1,y*14+1,12,12);
-  }
-
-  function hloop(){hstep();hdraw();requestAnimationFrame(hloop);}
-  hloop();
+  memSim.draw();
 }
-
-// ═══════════════════════════════════════════════════════════
-//  MINI PATTERN CANVASES
-// ═══════════════════════════════════════════════════════════
-const showcaseData = [
-  { name:'Блок', type:'Стабильная', desc:'Цикл длиной 1. Простейшая устойчивая структура.',
-    cells:[[0,0],[1,0],[0,1],[1,1]], size:6, w:4, h:4 },
-  { name:'Мигалка', type:'Периодическая (T=2)', desc:'Осциллирует между горизонтальной и вертикальной ориентацией.',
-    cells:[[1,0],[1,1],[1,2]], size:10, w:3, h:3 },
-  { name:'Глайдер', type:'Космолёт', desc:'Перемещается по диагонали на 1 клетку каждые 4 поколения.',
-    cells:[[1,0],[2,1],[0,2],[1,2],[2,2]], size:10, w:3, h:3 },
-  { name:'Улей', type:'Стабильная', desc:'Устойчивая структура из 6 клеток.',
-    cells:[[1,0],[2,0],[0,1],[3,1],[1,2],[2,2]], size:10, w:4, h:3 },
-  { name:'Пульсар', type:'Периодическая (T=3)', desc:'Один из самых распространённых осцилляторов.',
-    cells:[[2,0],[3,0],[4,0],[8,0],[9,0],[10,0],[0,2],[5,2],[7,2],[12,2],[0,3],[5,3],[7,3],[12,3],[0,4],[5,4],[7,4],[12,4],[2,5],[3,5],[4,5],[8,5],[9,5],[10,5],[2,7],[3,7],[4,7],[8,7],[9,7],[10,7],[0,8],[5,8],[7,8],[12,8],[0,9],[5,9],[7,9],[12,9],[0,10],[5,10],[7,10],[12,10],[2,12],[3,12],[4,12],[8,12],[9,12],[10,12]],
-    size:5, w:13, h:13 },
-  { name:'Глайдер-пушка', type:'Пушка', desc:'Генерирует поток глайдеров. 1 глайдер каждые 30 поколений.',
-    cells:[[0,4],[0,5],[1,4],[1,5],[10,4],[10,5],[10,6],[11,3],[11,7],[12,2],[12,8],[13,2],[13,8],[14,5],[15,3],[15,7],[16,4],[16,5],[16,6],[17,5],[20,2],[20,3],[20,4],[21,2],[21,3],[21,4],[22,1],[22,5],[24,0],[24,1],[24,5],[24,6],[34,2],[34,3],[35,2],[35,3]],
-    size:4, w:36, h:11 },
-  { name:'Поглотитель', type:'Стабильная', desc:'Поглощает глайдер и возвращается в исходное состояние.',
-    cells:[[0,0],[1,0],[0,1],[2,1],[2,2],[3,2],[3,3]], size:10, w:4, h:4 },
-  { name:'LWSS', type:'Космолёт (T=4)', desc:'Лёгкий космолёт. Движется горизонтально.',
-    cells:[[1,0],[4,0],[0,1],[0,2],[4,2],[0,3],[1,3],[2,3],[3,3]], size:10, w:5, h:4 }
-];
-
-function buildShowcase() {
-  const container = document.getElementById('patterns-showcase');
-  if (!container) return;
   
-  showcaseData.forEach(p => {
-    const card = document.createElement('div');
-    card.className = 'pattern-card';
-
-    const wrap = document.createElement('div');
-    wrap.className = 'mini-canvas-wrap';
-    const mc = document.createElement('canvas');
-    mc.className = 'mini-canvas';
-    const S = p.size;
-    mc.width = (p.w+2)*S;
-    mc.height = (p.h+2)*S;
-    const mctx = mc.getContext('2d');
-
-    function drawMini(g) {
-      mctx.fillStyle = '#0d0d14';
-      mctx.fillRect(0,0,mc.width,mc.height);
-      g.forEach(([x,y]) => {
-        mctx.fillStyle = '#00ff9d';
-        mctx.fillRect((x+1)*S+1, (y+1)*S+1, S-1, S-1);
-      });
-    }
-
-    const animated = ['Глайдер', 'Мигалка', 'Пульсар', 'Глайдер-пушка', 'LWSS'];
-    if (animated.includes(p.name)) {
-      const acols = p.w+2, arows = p.h+2;
-      let ag = new Uint8Array(acols*arows);
-      let ang = new Uint8Array(acols*arows);
-      p.cells.forEach(([x,y]) => { if(x<acols-2&&y<arows-2) ag[(y+1)*acols+(x+1)]=1; });
-
-      function astep() {
-        for(let y=0;y<arows;y++) for(let x=0;x<acols;x++){
-          let n=0;
-          for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
-            if(dx||dy){const nx=(x+dx+acols)%acols,ny=(y+dy+arows)%arows;n+=ag[ny*acols+nx];}
+  // ── TRANSMISSION : flux de gliders = données ──
+  const txCanvas = document.getElementById('sim-transmit');
+  if (txCanvas) {
+    const txSim = new GameOfLife(txCanvas, 8);
+    
+    // Créer un flux de 4 gliders espacés (représente 1-0-1-1)
+    for (let i = 0; i < 4; i++) {
+      const gl = PATTERNS.glider;
+      for (let y = 0; y < gl.length; y++) {
+        for (let x = 0; x < gl[y].length; x++) {
+          if (gl[y][x] === 'o') {
+            txSim.setCell(i * 7 + x, 5 + y, 1);
           }
-          const a=ag[y*acols+x];
-          ang[y*acols+x]=a?(n===2||n===3?1:0):(n===3?1:0);
         }
-        [ag,ang]=[ang,ag];
       }
-
-      function adraw() {
-        mctx.fillStyle='#0d0d14';
-        mctx.fillRect(0,0,mc.width,mc.height);
-        for(let y=0;y<arows;y++) for(let x=0;x<acols;x++)
-          if(ag[y*acols+x]){mctx.fillStyle='#00ff9d';mctx.fillRect(x*S+1,y*S+1,S-1,S-1);}
-      }
-
-      let tick=0;
-      function aloop(){
-        tick++;
-        if(tick%8===0){astep();adraw();}
-        requestAnimationFrame(aloop);
-      }
-      adraw(); aloop();
-    } else {
-      drawMini(p.cells);
     }
-
-    wrap.appendChild(mc);
-    card.innerHTML = `<h4>${p.name}</h4><div class="pattern-type">${p.type}</div>`;
-    card.appendChild(wrap);
-    const pdesc = document.createElement('p');
-    pdesc.textContent = p.desc;
-    card.appendChild(pdesc);
-
-    container.appendChild(card);
-  });
-}
-
-// ═══════════════════════════════════════════════════════════
-//  LOGIC GATES
-// ═══════════════════════════════════════════════════════════
-function buildGates() {
-  const container = document.getElementById('gates-grid');
-  if (!container) return;
-  
-  const gates = [
-    { name:'NOT', inputs:1, fn:([a])=>a?0:1, label:'NOT X', color:'#7c3aed' },
-    { name:'AND', inputs:2, fn:([a,b])=>a&&b?1:0, label:'X AND Y', color:'#00ff9d' },
-    { name:'OR', inputs:2, fn:([a,b])=>a||b?1:0, label:'X OR Y', color:'#f59e0b' },
-    { name:'NAND', inputs:2, fn:([a,b])=>!(a&&b)?1:0, label:'X NAND Y', color:'#ef4444' },
-    { name:'NOR', inputs:2, fn:([a,b])=>!(a||b)?1:0, label:'X NOR Y', color:'#06b6d4' },
-    { name:'XOR', inputs:2, fn:([a,b])=>a!==b?1:0, label:'X XOR Y', color:'#ec4899' },
-  ];
-
-  gates.forEach(gate => {
-    const card = document.createElement('div');
-    card.className = 'gate-card';
-    const vals = new Array(gate.inputs).fill(0);
-
-    function render() {
-      card.innerHTML = '';
-      const h4 = document.createElement('h4');
-      h4.innerHTML = `<span style="color:${gate.color}">${gate.name}</span> вентиль`;
-      card.appendChild(h4);
-
-      const demo = document.createElement('div');
-      demo.className = 'gate-demo';
-
-      const inp = document.createElement('div');
-      inp.className = 'gate-input';
-      const labels = ['X','Y'];
-      vals.forEach((v,i) => {
-        const row = document.createElement('div');
-        row.style.cssText='display:flex;align-items:center;gap:0.4rem;';
-        const lbl = document.createElement('span');
-        lbl.style.cssText='font-size:0.7rem;color:var(--text-dim);width:12px;';
-        lbl.textContent = labels[i];
-        const btn = document.createElement('button');
-        btn.className = 'toggle-btn' + (v?' on':'');
-        btn.textContent = v;
-        btn.addEventListener('click', () => {
-          vals[i] = vals[i]?0:1;
-          render();
-        });
-        row.appendChild(lbl);
-        row.appendChild(btn);
-        inp.appendChild(row);
-      });
-
-      const arr = document.createElement('div');
-      arr.className='gate-arrow'; arr.textContent='→';
-
-      const out = gate.fn(vals);
-      const outEl = document.createElement('div');
-      outEl.className='gate-output'+(out?' on':'');
-      outEl.textContent=out;
-
-      demo.appendChild(inp);
-      demo.appendChild(arr);
-      demo.appendChild(outEl);
-      card.appendChild(demo);
-
-      const formula = document.createElement('div');
-      formula.style.cssText='font-size:0.75rem;color:var(--text-dim);margin-top:0.5rem;';
-      const inputStr = vals.slice(0,gate.inputs).join(', ');
-      formula.innerHTML = `<span style="color:${gate.color}">${gate.name}</span>(${inputStr}) = <strong style="color:${out?'var(--accent)':'var(--text-dim)'}">${out}</strong>`;
-      card.appendChild(formula);
-    }
-
-    render();
-    container.appendChild(card);
-  });
-}
-
-// ── TRUTH TABLE ──
-function buildTruthTable() {
-  const tbody = document.getElementById('truth-tbody');
-  if (!tbody) return;
-  
-  for (let x=0;x<=1;x++) for (let y=0;y<=1;y++) {
-    const tr = document.createElement('tr');
-    const and=x&&y?1:0, or=x||y?1:0, nand=!(x&&y)?1:0, nor=!(x||y)?1:0, xor=x!==y?1:0;
-    [x,y,and,or,nand,nor,xor].forEach(v=>{
-      const td=document.createElement('td');
-      td.textContent=v;
-      td.className=v?'one':'zero';
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
+    txSim.interval = 150;
+    txSim.start();
   }
-}
-
-// ── SCROLL REVEAL ──
-function initReveal() {
-  const els = document.querySelectorAll('.reveal');
-  if (!els.length) return;
   
-  const obs = new IntersectionObserver(entries => {
-    entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); });
-  }, { threshold: 0.08 });
-  els.forEach(el => obs.observe(el));
-}
-
-// ═══════════════════════════════════════════════════════════
-//  INIT
-// ═══════════════════════════════════════════════════════════
-window.addEventListener('load', () => {
-  // Indique que la page est chargée (pour les fallbacks CSS)
-  document.body.classList.add('loaded');
+  // ── HORLOGE : pulse régulier de gliders ──
+  const clockCanvas = document.getElementById('sim-clock');
+  if (clockCanvas) {
+    const clockSim = new GameOfLife(clockCanvas, 6);
+    let clockCount = 0;
+    
+    function clockLoop() {
+      clockSim.clear();
+      
+      // Émettre un glider toutes les 20 itérations (simule période 30)
+      if (clockCount % 20 === 0) {
+        const gl = PATTERNS.glider;
+        for (let y = 0; y < gl.length; y++) {
+          for (let x = 0; x < gl[y].length; x++) {
+            if (gl[y][x] === 'o') {
+              clockSim.setCell(4 + x, 14 + y, 1);
+            }
+          }
+        }
+      }
+      
+      clockSim.draw();
+      clockCount++;
+      setTimeout(clockLoop, 100);
+    }
+    clockLoop();
+  }
   
-  initHero();
-  initCanvas();
-  buildShowcase();
-  buildGates();
-  buildTruthTable();
-  initReveal();
-  loadPattern('glider');
-  draw();
+  // ── PORTES LOGIQUES : tables de vérité interactives ──
+  function setupGate(gateType, outputId) {
+    const inputs = document.querySelectorAll(`.gate-input[data-gate="${gateType}"]`);
+    const output = document.getElementById(outputId);
+    if (!inputs.length || !output) return;
+    
+    function update() {
+      const values = {};
+      inputs.forEach(inp => {
+        values[inp.dataset.bit] = inp.checked ? 1 : 0;
+      });
+      
+      let result = 0;
+      switch(gateType) {
+        case 'and': result = (values.x && values.y) ? 1 : 0; break;
+        case 'or':  result = (values.x || values.y) ? 1 : 0; break;
+        case 'not': result = values.x ? 0 : 1; break;
+        case 'nand': result = !(values.x && values.y) ? 1 : 0; break;
+      }
+      
+      output.textContent = result;
+      output.style.color = result ? 'var(--accent)' : 'var(--text-dim)';
+    }
+    
+    inputs.forEach(inp => inp.addEventListener('change', update));
+    update();  // Initialisation
+  }
+  
+  setupGate('and', 'out-and');
+  setupGate('or', 'out-or');
+  setupGate('not', 'out-not');
+  setupGate('nand', 'out-nand');
+  
+  // ── PORTES DANS LIFE : NOT avec gliders (démo conceptuelle) ──
+  const notCanvas = document.getElementById('gate-not');
+  if (notCanvas) {
+    const notSim = new GameOfLife(notCanvas, 8);
+    
+    document.getElementById('btn-not-run')?.addEventListener('click', () => {
+      const inputX = document.getElementById('not-x')?.checked;
+      notSim.clear();
+      
+      // Flux "gun" vertical (représente le signal de référence = 1)
+      for (let i = 0; i < 10; i++) {
+        notSim.setCell(14, i * 3, 1);
+      }
+      
+      // Glider d'entrée si x=1 (vient du sud-ouest)
+      if (inputX) {
+        const gl = PATTERNS.glider;
+        for (let y = 0; y < gl.length; y++) {
+          for (let x = 0; x < gl[y].length; x++) {
+            if (gl[y][x] === 'o') {
+              notSim.setCell(7 + x, 12 + y, 1);
+            }
+          }
+        }
+      }
+      
+      notSim.draw();
+      notSim.interval = 150;
+      notSim.start();
+      
+      // Résultat simulé après "collision"
+      setTimeout(() => {
+        const result = inputX ? 0 : 1;
+        const resultEl = document.getElementById('not-result');
+        if (resultEl) {
+          resultEl.textContent = result;
+          resultEl.style.color = result ? 'var(--accent)' : 'var(--text-dim)';
+        }
+      }, 1500);
+    });
+  }
+  
+  // ── PORTE AND dans Life (démo conceptuelle) ──
+  const andCanvas = document.getElementById('gate-and');
+  if (andCanvas) {
+    const andSim = new GameOfLife(andCanvas, 6);
+    
+    document.getElementById('btn-and-run')?.addEventListener('click', () => {
+      const inputX = document.getElementById('and-x')?.checked;
+      const inputY = document.getElementById('and-y')?.checked;
+      andSim.clear();
+      
+      // Flux gun de référence
+      for (let i = 0; i < 10; i++) {
+        andSim.setCell(20, i * 4, 1);
+      }
+      
+      // Entrée x (si activée)
+      if (inputX) {
+        for (let i = 0; i < 3; i++) andSim.setCell(12 + i, 14, 1);
+      }
+      // Entrée y (si activée)
+      if (inputY) {
+        for (let i = 0; i < 3; i++) andSim.setCell(26 + i, 18, 1);
+      }
+      
+      andSim.draw();
+      andSim.interval = 150;
+      andSim.start();
+      
+      // Résultat simulé
+      setTimeout(() => {
+        const result = (inputX && inputY) ? 1 : 0;
+        const resultEl = document.getElementById('and-result');
+        if (resultEl) {
+          resultEl.textContent = result;
+          resultEl.style.color = result ? 'var(--accent)' : 'var(--text-dim)';
+        }
+      }, 2000);
+    });
+  }
+  
+  // ── NAND placeholder ──
+  const nandCanvas = document.getElementById('gate-nand');
+  if (nandCanvas) {
+    const nandSim = new GameOfLife(nandCanvas, 6);
+    nandSim.loadPattern(PATTERNS.blinker);  // Démo visuelle simple
+    nandSim.draw();
+  }
+  
+  // ── MACHINE DE RENDELL (simplifiée) : ruban + tête ──
+  const rendellCanvas = document.getElementById('sim-rendell');
+  if (rendellCanvas) {
+    const rendellSim = new GameOfLife(rendellCanvas, 8);
+    
+    function rendellLoop() {
+      rendellSim.clear();
+      
+      // Ruban : blocs stables = bits de mémoire (10101...)
+      for (let i = 0; i < 6; i++) {
+        if (i % 2 === 0) {  // bit = 1
+          const bl = PATTERNS.block;
+          for (let y = 0; y < bl.length; y++) {
+            for (let x = 0; x < bl[y].length; x++) {
+              if (bl[y][x] === 'o') {
+                rendellSim.setCell(i * 5 + x, 10 + y, 1);
+              }
+            }
+          }
+        }
+      }
+      
+      // Tête de lecture : un glider qui "scanne" le ruban
+      const gl = PATTERNS.glider;
+      for (let y = 0; y < gl.length; y++) {
+        for (let x = 0; x < gl[y].length; x++) {
+          if (gl[y][x] === 'o') {
+            rendellSim.setCell(16 + x, 3 + y, 1);
+          }
+        }
+      }
+      
+      rendellSim.draw();
+      setTimeout(rendellLoop, 400);  // Animation lente pour visibilité
+    }
+    rendellLoop();
+  }
+  
 });
