@@ -310,7 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Positionner l'EATER (stable) au centre-droit
     const eaterX = 22;
-    const eaterY = 16;
+    const eaterY = 16+5;
     const eaterPattern = PATTERNS.eater;
     for (let y = 0; y < eaterPattern.length; y++) {
       for (let x = 0; x < eaterPattern[y].length; x++) {
@@ -322,8 +322,8 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Positionner le GLIDER au nord-ouest pour qu'il approche l'eater (↘)
     // Le glider avance de 1 cellule diagonale tous les 4 ticks
-    const gliderX = eaterX - 12;  // 12 cellules à gauche
-    const gliderY = eaterY - 12;  // 12 cellules au-dessus
+    const gliderX = eaterX - 12-5;  // 12 cellules à gauche
+    const gliderY = eaterY - 12-5;  // 12 cellules au-dessus
     const gliderPattern = PATTERNS.glider;
     for (let y =  0; y < gliderPattern.length; y++) {
       for (let x = 0; x < gliderPattern[y].length; x++) {
